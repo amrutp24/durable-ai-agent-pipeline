@@ -42,25 +42,32 @@ durable-ai-agent-pipeline/
 
 ```
 POST /posts {"topic": "..."}
-        │
-        ▼
-  ┌───────────────────────────────────────────────────────────┐
-  │ Durable orchestrator (checkpointed at every step)          │
-  │                                                             │
-  │  research (step) → write (step) ─┐                         │
-  │                                   ▼                         │
-  │                        critique (step) ── score < 8 ──┐     │
-  │                                   │                    │     │
-  │                              score ≥ 8            revise (step)
-  │                                   │                    │     │
-  │                                   └────────────────────┘     │
-  │                                   ▼                         │
-  │                    wait_for_callback("human-approval")      │
-  │                    ⏸ suspended — $0 compute — up to 24h     │
-  └───────────────────────────────────────────────────────────┘
-        │  human calls POST /posts/{id}/approve
-        ▼
-  publish (step) → S3 → status = PUBLISHED
+      │
+      ▼  API Lambda: record run in DynamoDB, async-invoke the prod alias
+┌────────────────────────────────────────────────────────────────┐
+│ Durable orchestrator — every (step) is checkpointed            │
+│                                                                │
+│   research (step)                                              │
+│       │                                                        │
+│       ▼                                                        │
+│   write (step)                                                 │
+│       │                                                        │
+│       ▼                                                        │
+│   critique (step) ◄────────────────────┐                       │
+│       │                                │                       │
+│       ├── score < 8 ──► revise (step) ─┘  (max 2 revisions)    │
+│       │                                                        │
+│       ▼  score ≥ 8 (or revision limit reached)                 │
+│   wait_for_callback("human-approval")                          │
+│   suspended — $0 compute — up to 24 h                          │
+│       │                                                        │
+│       │ ◄─── human: POST /posts/{id}/approve                   │
+│       │              {"approved": true | false}                │
+│       │                                                        │
+│       ├── approved ──► publish (step) ──► S3, status=PUBLISHED │
+│       │                                                        │
+│       └── rejected or 24 h timeout ──► status = REJECTED       │
+└────────────────────────────────────────────────────────────────┘
 ```
 
 Every arrow into a `(step)` is a checkpoint: if the function fails or gets interrupted after `write`, a retry resumes at `critique` instead of re-running (and re-billing) the writer agent.
