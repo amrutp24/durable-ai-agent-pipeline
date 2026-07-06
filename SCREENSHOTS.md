@@ -14,20 +14,7 @@ the whole article in one image.
 
 If your screenshot is of the executions *list*, retake it from the detail page.
 
-## 2. Proof it was invoked twice (suspend → resume)
-
-Skip grepping logs for `wait_for_callback` — the code never logs that string.
-The evidence of suspend/resume is **two separate invocations for one
-execution**:
-
-- Easiest: on the same execution detail page as shot 1, the events list shows
-  the execution suspending at `human-approval` and a new invocation resuming it
-  after the callback.
-- In CloudWatch (optional): log group `/aws/lambda/durable-ai-agent-orchestrator`
-  — you'll see **two `START RequestId` / `REPORT RequestId` pairs** bracketing
-  the approval gap. Different request IDs, one execution: that's checkpoint/replay.
-
-## 3. The terminal session (PowerShell)
+## 2. The terminal session (PowerShell)
 
 The earlier bash commands mangle JSON quoting on Windows (that was your
 "Internal Server Error"). Paste this instead — it's PowerShell-native:
@@ -57,7 +44,7 @@ Invoke-RestMethod "$API/posts/$($run.execution_id)" | Format-List status, final_
 
 Screenshot the whole sequence once the last call shows `PUBLISHED`.
 
-## 4. Durable config (execution timeout + retention)
+## 3. Durable config (execution timeout + retention)
 
 **Lambda console → `durable-ai-agent-orchestrator` → Configuration tab →
 "Durable execution" in the left sidebar** (same sidebar as General
@@ -75,13 +62,13 @@ $env:AWS_PROFILE = "dev"
 python -c "import sys; sys.path.insert(0,'.'); import boto3,json; print(json.dumps(boto3.client('lambda', region_name='us-east-1').get_function_configuration(FunctionName='durable-ai-agent-orchestrator')['DurableConfig'], indent=2))"
 ```
 
-## 5. Billing (optional — skip if unsure)
+## 4. Billing (optional — skip if unsure)
 
 Purely optional flavor for the cost section; the article stands without it.
 If you want it: **Billing console → Budgets → `durable-ai-agent-monthly-budget`**.
 It has no impact on anything — it's just your alert's threshold page.
 
-## 6. Architecture diagram
+## 5. Architecture diagram
 
 `diagram.svg` renders on GitHub; export to PNG for Medium (open in browser →
 screenshot, or Inkscape).
