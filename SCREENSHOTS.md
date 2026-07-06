@@ -40,8 +40,12 @@ $run = Invoke-RestMethod -Method Post -Uri "$API/posts" -ContentType "applicatio
   -Body (@{ topic = "why idle compute shouldn't cost money" } | ConvertTo-Json)
 $run
 
-# Poll until it's waiting on you (repeat this line every ~20s)
-Invoke-RestMethod "$API/posts/$($run.execution_id)" | Format-List status, topic
+# Wait for the agents to finish (~30-60s of Bedrock calls) - loops until it needs you
+do {
+  Start-Sleep -Seconds 10
+  $status = (Invoke-RestMethod "$API/posts/$($run.execution_id)").status
+  "status: $status"
+} until ($status -eq "AWAITING_APPROVAL")
 
 # Approve it
 Invoke-RestMethod -Method Post -Uri "$API/posts/$($run.execution_id)/approve" `
