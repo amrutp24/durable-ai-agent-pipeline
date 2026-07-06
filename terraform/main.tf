@@ -31,6 +31,7 @@ module "agent_pipeline" {
   durable_execution_timeout_seconds = var.durable_execution_timeout_seconds
   durable_retention_period_days     = var.durable_retention_period_days
 
+  lambda_alias_name                 = var.lambda_alias_name
   orchestrator_reserved_concurrency = var.orchestrator_reserved_concurrency
   api_reserved_concurrency          = var.api_reserved_concurrency
 

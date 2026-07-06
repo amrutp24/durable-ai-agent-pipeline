@@ -43,6 +43,11 @@ variable "durable_retention_period_days" {
   type        = number
 }
 
+variable "lambda_alias_name" {
+  description = "Alias name for the orchestrator's published version (durable functions require a qualified ARN)."
+  type        = string
+}
+
 variable "orchestrator_reserved_concurrency" {
   description = "Reserved concurrency for the orchestrator - cost guardrail. -1 for unreserved."
   type        = number

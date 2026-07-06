@@ -14,6 +14,7 @@ max_revisions            = 2
 approval_score_threshold = 8
 
 # Durable execution
+lambda_alias_name                 = "prod" # alias for the orchestrator (durable fns need qualified ARNs)
 callback_timeout_seconds          = 86400  # 24h for a human to approve
 durable_execution_timeout_seconds = 172800 # 48h total execution lifetime
 durable_retention_period_days     = 7
