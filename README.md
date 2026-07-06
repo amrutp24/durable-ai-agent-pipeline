@@ -8,7 +8,6 @@ A multi-agent content pipeline (researcher → writer → editor, with a self-co
 - 🪣 **S3** — where approved posts get published
 - 🌐 **API Gateway HTTP API** — start a run, check status, approve/reject
 - 🏗️ **Terraform** via the reusable [terraform-aws-durable-agent-pipeline](https://github.com/amrutp24/terraform-aws-durable-agent-pipeline) module (AWS provider ≥ 6.25.0, which added `durable_config` support)
-- 💰 **AWS Budgets** — account-level $50/month alert **for the deployer** (this repo's root config, not the module): emails you at 50/80/100% and on forecast so experimenting here can't quietly rack up a bill
 
 ## Why this is interesting
 
@@ -105,9 +104,9 @@ version = "~> 1.0"
 
 ## Cost controls
 
-- **AWS Budgets alert** (`terraform/billing.tf`): emails `billing_alert_email` at 50%, 80%, and 100% of `monthly_budget_usd` ($50 default), plus a forecast alert *before* the line is crossed.
 - **Reserved concurrency** variables cap runaway Lambda invocations (disabled with `-1` on accounts whose total concurrency limit is ≤50, since AWS requires 50 unreserved).
 - Durable waits bill **nothing** while suspended; DynamoDB is pay-per-request; CloudWatch logs expire after 14 days.
+- `terraform/billing.tf` additionally sets up a personal account-level AWS Budgets alert for whoever deploys this (`monthly_budget_usd` / `billing_alert_email` in tfvars). It's deployer-side protection, unrelated to the pipeline — delete the file if you don't want it.
 
 Note the `api_endpoint` output when it finishes.
 
