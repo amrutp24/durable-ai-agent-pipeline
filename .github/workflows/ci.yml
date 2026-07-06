@@ -13,13 +13,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # The root config references the infra module by local sibling path;
-      # check the module repo out where that path resolves.
-      - name: Checkout infra module as sibling
+      # The root config references the infra module by local sibling path.
+      # While the module repo is private this checkout fails (the default CI
+      # token is scoped to this repo only), so validation degrades to
+      # fmt-only until the module repo is public.
+      - name: Checkout infra module
+        id: module
+        continue-on-error: true
         uses: actions/checkout@v4
         with:
           repository: amrutp24/terraform-aws-durable-agent-pipeline
-          path: ../terraform-aws-durable-agent-pipeline
+          path: .ci-module
 
       - uses: hashicorp/setup-terraform@v3
 
@@ -27,13 +31,19 @@ jobs:
         working-directory: terraform
 
       - name: terraform validate
+        if: steps.module.outcome == 'success'
         working-directory: terraform
         run: |
-          # Stub packages so validate doesn't require a real build
+          # Point the module at the CI checkout and stub the build packages
+          sed -i 's|source = "../../terraform-aws-durable-agent-pipeline"|source = "../.ci-module"|' main.tf
           mkdir -p ../build/orchestrator ../build/api
           touch ../build/orchestrator/lambda_function.py ../build/api/lambda_function.py
           terraform init -backend=false
           terraform validate
+
+      - name: Validate skipped
+        if: steps.module.outcome != 'success'
+        run: echo "::warning::terraform validate skipped - module repo not accessible (private). Will run once amrutp24/terraform-aws-durable-agent-pipeline is public."
 
   python:
     runs-on: ubuntu-latest
@@ -52,7 +62,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - name: Gitleaks
-        uses: gitleaks/gitleaks-action@v2
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Gitleaks (full git history)
+        run: |
+          docker run --rm -v "$PWD:/repo" zricethezav/gitleaks:latest \
+            git /repo --no-banner --verbose
