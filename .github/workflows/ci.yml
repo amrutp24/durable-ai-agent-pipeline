@@ -1,0 +1,58 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  terraform:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # The root config references the infra module by local sibling path;
+      # check the module repo out where that path resolves.
+      - name: Checkout infra module as sibling
+        uses: actions/checkout@v4
+        with:
+          repository: amrutp24/terraform-aws-durable-agent-pipeline
+          path: ../terraform-aws-durable-agent-pipeline
+
+      - uses: hashicorp/setup-terraform@v3
+
+      - run: terraform fmt -check -recursive
+        working-directory: terraform
+
+      - name: terraform validate
+        working-directory: terraform
+        run: |
+          # Stub packages so validate doesn't require a real build
+          mkdir -p ../build/orchestrator ../build/api
+          touch ../build/orchestrator/lambda_function.py ../build/api/lambda_function.py
+          terraform init -backend=false
+          terraform validate
+
+  python:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - run: pip install ruff
+      - run: ruff check src
+      - run: python -m py_compile src/api/lambda_function.py src/orchestrator/lambda_function.py
+
+  secrets-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -1,0 +1,14 @@
+build/
+terraform/.terraform/
+terraform/.terraform.lock.hcl
+terraform/terraform.tfstate
+terraform/terraform.tfstate.backup
+terraform/tfplan
+terraform/*.tfplan
+terraform/*.tfvars
+!terraform/dev.tfvars.example
+*.zip
+__pycache__/
+*.pyc
+.DS_Store
+.ruff_cache/

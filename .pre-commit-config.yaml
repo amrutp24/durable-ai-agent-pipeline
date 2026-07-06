@@ -1,0 +1,45 @@
+# Pre-commit hooks configuration
+# Install with: pip install pre-commit
+# Then run: pre-commit install
+
+repos:
+  # General hooks
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-merge-conflict
+      - id: check-added-large-files
+        args: ["--maxkb=1000"]
+
+  # Terraform hooks
+  - repo: https://github.com/antonbabenko/pre-commit-terraform
+    rev: v1.96.1
+    hooks:
+      - id: terraform_fmt
+      - id: terraform_validate
+        args:
+          - --hook-config=--retry-once-with-cleanup=true
+
+  # Terraform security scanner
+  - repo: https://github.com/aquasecurity/tfsec
+    rev: v1.28.1
+    hooks:
+      - id: tfsec
+        args: [--soft-fail]
+
+  # Secret detection
+  - repo: https://github.com/Yelp/detect-secrets
+    rev: v1.5.0
+    hooks:
+      - id: detect-secrets
+        args: ["--baseline", ".secrets.baseline"]
+
+  # Python linting
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.15.4
+    hooks:
+      - id: ruff-check
+        files: ^src/

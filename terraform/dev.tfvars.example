@@ -1,0 +1,30 @@
+# Copy to dev.tfvars and fill in your values. dev.tfvars is gitignored -
+# never commit it.
+
+aws_profile  = "dev"
+aws_region   = "us-east-1"
+project_name = "durable-ai-agent"
+
+# Must have Bedrock model access granted in this account + region
+# (Bedrock console -> Model access).
+model_id = "us.anthropic.claude-haiku-4-5-20251001-v1:0"
+
+# Agent behavior
+max_revisions            = 2
+approval_score_threshold = 8
+
+# Durable execution
+callback_timeout_seconds          = 86400  # 24h for a human to approve
+durable_execution_timeout_seconds = 172800 # 48h total execution lifetime
+durable_retention_period_days     = 7
+
+# Cost guardrails
+orchestrator_reserved_concurrency = 5
+api_reserved_concurrency          = 10
+monthly_budget_usd                = "50"
+billing_alert_email               = "you@example.com"
+
+tags = {
+  Project   = "durable-ai-agent-pipeline"
+  ManagedBy = "terraform"
+}
