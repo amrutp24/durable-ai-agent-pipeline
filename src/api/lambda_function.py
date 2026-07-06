@@ -81,7 +81,11 @@ def approve(execution_id, body):
 def lambda_handler(event, context):
     route_key = event["routeKey"]  # e.g. "POST /posts/{id}/approve"
     path_params = event.get("pathParameters") or {}
-    body = json.loads(event["body"]) if event.get("body") else {}
+    try:
+        body = json.loads(event["body"]) if event.get("body") else {}
+    except json.JSONDecodeError:
+        # Common cause on Windows: shell quoting mangling the JSON body
+        return _response(400, {"error": "request body is not valid JSON", "received": event.get("body", "")[:200]})
 
     if route_key == "POST /posts":
         return start_pipeline(body)

@@ -1,55 +1,83 @@
 # Screenshot shot-list for the Medium article
 
-All of these exist right now in the `dev` account (us-east-1) from today's verified
-runs. Crop out the account ID (top-right) before publishing.
+All console links: us-east-1, function `durable-ai-agent-orchestrator`.
+Crop out the AWS account ID (top-right) before publishing.
 
 ## 1. The money shot: durable execution timeline ⭐
 
-**Lambda console → Functions → `durable-ai-agent-orchestrator` → Durable executions tab → click the succeeded execution**
+**Lambda console → Functions → `durable-ai-agent-orchestrator` → Durable executions tab → click a Succeeded execution's ID** (don't screenshot the list — click into one).
 
-Shows every checkpoint (research, write-0, critique-0, …), the exact moment the
-function suspended at `human-approval`, the gap while it waited (zero compute),
-and the resume + publish after approval. This single image explains the whole
-article.
+The detail page shows the operation timeline: the `research` / `write-0` /
+`critique-0` steps, the `human-approval` **WaitForCallback** with its start and
+end timestamps (the visible gap = suspended at $0), then `publish`. That gap is
+the whole article in one image.
 
-Succeeded execution to use: the one started ~9:10 PM CT on Jul 5
-(execution for run `49861de3-...` — topic "what AWS Lambda durable functions
-change for AI agents").
+If your screenshot is of the executions *list*, retake it from the detail page.
 
-## 2. The suspend/replay in the logs
+## 2. Proof it was invoked twice (suspend → resume)
 
-**CloudWatch → Log groups → `/aws/lambda/durable-ai-agent-orchestrator`**
+Skip grepping logs for `wait_for_callback` — the code never logs that string.
+The evidence of suspend/resume is **two separate invocations for one
+execution**:
 
-Pick the log stream pair showing: first invocation ends after `wait_for_callback`,
-second invocation (after approval) replays and goes straight to `publish`.
-Highlights that the function was *invoked twice* but each agent step ran *once*.
+- Easiest: on the same execution detail page as shot 1, the events list shows
+  the execution suspending at `human-approval` and a new invocation resuming it
+  after the callback.
+- In CloudWatch (optional): log group `/aws/lambda/durable-ai-agent-orchestrator`
+  — you'll see **two `START RequestId` / `REPORT RequestId` pairs** bracketing
+  the approval gap. Different request IDs, one execution: that's checkpoint/replay.
 
-## 3. The terminal session
+## 3. The terminal session (PowerShell)
 
-Re-run the happy path and screenshot the terminal:
+The earlier bash commands mangle JSON quoting on Windows (that was your
+"Internal Server Error"). Paste this instead — it's PowerShell-native:
 
-```bash
-API=$(cd terraform && terraform output -raw api_endpoint)
-curl -X POST "$API/posts" -d '{"topic": "anything"}'
-curl "$API/posts/<id>"              # AWAITING_APPROVAL + draft
-curl -X POST "$API/posts/<id>/approve" -d '{"approved": true}'
-curl "$API/posts/<id>"              # PUBLISHED + s3 url
+```powershell
+$API = "https://pu4aazbz39.execute-api.us-east-1.amazonaws.com"
+
+# Start a run
+$run = Invoke-RestMethod -Method Post -Uri "$API/posts" -ContentType "application/json" `
+  -Body (@{ topic = "why idle compute shouldn't cost money" } | ConvertTo-Json)
+$run
+
+# Poll until it's waiting on you (repeat this line every ~20s)
+Invoke-RestMethod "$API/posts/$($run.execution_id)" | Format-List status, topic
+
+# Approve it
+Invoke-RestMethod -Method Post -Uri "$API/posts/$($run.execution_id)/approve" `
+  -ContentType "application/json" -Body '{"approved": true}'
+
+# Confirm published
+Invoke-RestMethod "$API/posts/$($run.execution_id)" | Format-List status, final_url
 ```
 
-## 4. Durable config in the console
+Screenshot the whole sequence once the last call shows `PUBLISHED`.
 
-**Lambda console → `durable-ai-agent-orchestrator` → Configuration → Durable execution**
+## 4. Durable config (execution timeout + retention)
 
-Shows Execution timeout (48h) and Retention period (7 days) — proof this is a
-first-class Lambda feature, not a wrapper.
+**Lambda console → `durable-ai-agent-orchestrator` → Configuration tab →
+"Durable execution" in the left sidebar** (same sidebar as General
+configuration / Triggers / Permissions — scroll the sidebar if needed).
 
-## 5. Billing guardrail (optional, for the cost section)
+Expected values: **Execution timeout 172800 s (48 h)**, **Retention 7 days**.
 
-**Billing console → Budgets → `durable-ai-agent-monthly-budget`**
+If your console doesn't show that sidebar entry, screenshot this instead from
+the repo root (the local `aws` CLI is too old for durable fields; this uses the
+newer bundled boto3):
 
-The $50 budget with its 4 alert thresholds.
+```powershell
+cd build\api
+$env:AWS_PROFILE = "dev"
+python -c "import sys; sys.path.insert(0,'.'); import boto3,json; print(json.dumps(boto3.client('lambda', region_name='us-east-1').get_function_configuration(FunctionName='durable-ai-agent-orchestrator')['DurableConfig'], indent=2))"
+```
+
+## 5. Billing (optional — skip if unsure)
+
+Purely optional flavor for the cost section; the article stands without it.
+If you want it: **Billing console → Budgets → `durable-ai-agent-monthly-budget`**.
+It has no impact on anything — it's just your alert's threshold page.
 
 ## 6. Architecture diagram
 
-Use `diagram.svg` in this repo (renders on GitHub; export to PNG for Medium via
-any browser: open the file → screenshot, or use Inkscape/`rsvg-convert`).
+`diagram.svg` renders on GitHub; export to PNG for Medium (open in browser →
+screenshot, or Inkscape).
