@@ -8,7 +8,7 @@ A multi-agent content pipeline (researcher → writer → editor, with a self-co
 - 🪣 **S3** — where approved posts get published
 - 🌐 **API Gateway HTTP API** — start a run, check status, approve/reject
 - 🏗️ **Terraform** via the reusable [terraform-aws-durable-agent-pipeline](https://github.com/amrutp24/terraform-aws-durable-agent-pipeline) module (AWS provider ≥ 6.25.0, which added `durable_config` support)
-- 💰 **AWS Budgets** — $50/month cost alert with email notifications at 50/80/100% and on forecast
+- 💰 **AWS Budgets** — account-level $50/month alert **for the deployer** (this repo's root config, not the module): emails you at 50/80/100% and on forecast so experimenting here can't quietly rack up a bill
 
 ## Why this is interesting
 

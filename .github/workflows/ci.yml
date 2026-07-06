@@ -7,49 +7,46 @@ on:
 permissions:
   contents: read
 
+# Supply-chain policy: all third-party actions pinned to full commit SHAs
+# (mutable tags are a proven attack vector - see the March 2026 trivy-action
+# compromise); container images pinned by digest.
+
 jobs:
   terraform:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
 
-      # The root config references the infra module by local sibling path.
-      # While the module repo is private this checkout fails (the default CI
-      # token is scoped to this repo only), so validation degrades to
-      # fmt-only until the module repo is public.
-      - name: Checkout infra module
+      # The root config references the infra module by local sibling path;
+      # check the module repo out where that path resolves.
+      - name: Checkout infra module as sibling
         id: module
         continue-on-error: true
-        uses: actions/checkout@v4
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
         with:
           repository: amrutp24/terraform-aws-durable-agent-pipeline
           path: .ci-module
 
-      - uses: hashicorp/setup-terraform@v3
+      - uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3.1.2
 
       - run: terraform fmt -check -recursive
         working-directory: terraform
 
       - name: terraform validate
-        if: steps.module.outcome == 'success'
         working-directory: terraform
         run: |
-          # Point the module at the CI checkout and stub the build packages
-          sed -i 's|source = "../../terraform-aws-durable-agent-pipeline"|source = "../.ci-module"|' main.tf
+          # Use the CI checkout of the module and stub the build packages
+          sed -i 's|source  = "amrutp24/durable-agent-pipeline/aws"|source = "../.ci-module"|; /version = "~> 1.1"/d' main.tf
           mkdir -p ../build/orchestrator ../build/api
           touch ../build/orchestrator/lambda_function.py ../build/api/lambda_function.py
           terraform init -backend=false
           terraform validate
 
-      - name: Validate skipped
-        if: steps.module.outcome != 'success'
-        run: echo "::warning::terraform validate skipped - module repo not accessible (private). Will run once amrutp24/terraform-aws-durable-agent-pipeline is public."
-
   python:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
           python-version: "3.13"
       - run: pip install ruff
@@ -59,10 +56,11 @@ jobs:
   secrets-scan:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
         with:
           fetch-depth: 0
       - name: Gitleaks (full git history)
         run: |
-          docker run --rm -v "$PWD:/repo" zricethezav/gitleaks:latest \
+          docker run --rm -v "$PWD:/repo" \
+            zricethezav/gitleaks@sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f \
             git /repo --no-banner --verbose
