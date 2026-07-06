@@ -14,11 +14,10 @@ data "archive_file" "api" {
 }
 
 module "agent_pipeline" {
-  # Local path while developing; after publishing to the Terraform Registry,
-  # switch to:
-  #   source  = "amrutp24/durable-agent-pipeline/aws"
-  #   version = "~> 1.0"
-  source = "../../terraform-aws-durable-agent-pipeline"
+  # Published module: https://registry.terraform.io/modules/amrutp24/durable-agent-pipeline/aws
+  # For local module development, swap to: source = "../../terraform-aws-durable-agent-pipeline"
+  source  = "amrutp24/durable-agent-pipeline/aws"
+  version = "~> 1.1"
 
   project_name         = var.project_name
   orchestrator_package = data.archive_file.orchestrator.output_path
