@@ -1,0 +1,95 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 980 560" font-family="Segoe UI, Helvetica, Arial, sans-serif">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#555"/>
+    </marker>
+  </defs>
+
+  <rect width="980" height="560" fill="#fafafa"/>
+  <text x="490" y="34" text-anchor="middle" font-size="20" font-weight="600" fill="#232f3e">Durable AI Agent Pipeline — human-in-the-loop on Lambda durable functions</text>
+
+  <!-- Client -->
+  <rect x="30" y="80" width="130" height="54" rx="8" fill="#fff" stroke="#232f3e" stroke-width="1.5"/>
+  <text x="95" y="103" text-anchor="middle" font-size="13" font-weight="600" fill="#232f3e">You / curl</text>
+  <text x="95" y="121" text-anchor="middle" font-size="11" fill="#666">start · status · approve</text>
+
+  <!-- API Gateway -->
+  <rect x="220" y="80" width="150" height="54" rx="8" fill="#fff" stroke="#8C4FFF" stroke-width="2"/>
+  <text x="295" y="103" text-anchor="middle" font-size="13" font-weight="600" fill="#232f3e">API Gateway</text>
+  <text x="295" y="121" text-anchor="middle" font-size="11" fill="#666">HTTP API /posts…</text>
+
+  <!-- API Lambda -->
+  <rect x="430" y="80" width="150" height="54" rx="8" fill="#fff" stroke="#ED7100" stroke-width="2"/>
+  <text x="505" y="103" text-anchor="middle" font-size="13" font-weight="600" fill="#232f3e">API Lambda</text>
+  <text x="505" y="121" text-anchor="middle" font-size="11" fill="#666">plain function</text>
+
+  <!-- DynamoDB -->
+  <rect x="640" y="80" width="150" height="54" rx="8" fill="#fff" stroke="#4D27AA" stroke-width="2"/>
+  <text x="715" y="103" text-anchor="middle" font-size="13" font-weight="600" fill="#232f3e">DynamoDB</text>
+  <text x="715" y="121" text-anchor="middle" font-size="11" fill="#666">status + callback_id</text>
+
+  <!-- Orchestrator box -->
+  <rect x="120" y="210" width="560" height="290" rx="12" fill="#fff7ef" stroke="#ED7100" stroke-width="2.5"/>
+  <text x="400" y="238" text-anchor="middle" font-size="14" font-weight="700" fill="#232f3e">Orchestrator — Lambda durable function (invoked via prod alias)</text>
+
+  <!-- Steps inside -->
+  <rect x="150" y="260" width="130" height="46" rx="6" fill="#fff" stroke="#ED7100" stroke-width="1.5"/>
+  <text x="215" y="279" text-anchor="middle" font-size="12" font-weight="600">research</text>
+  <text x="215" y="295" text-anchor="middle" font-size="10" fill="#666">step ✓ checkpoint</text>
+
+  <rect x="330" y="260" width="130" height="46" rx="6" fill="#fff" stroke="#ED7100" stroke-width="1.5"/>
+  <text x="395" y="279" text-anchor="middle" font-size="12" font-weight="600">write</text>
+  <text x="395" y="295" text-anchor="middle" font-size="10" fill="#666">step ✓ checkpoint</text>
+
+  <rect x="510" y="260" width="130" height="46" rx="6" fill="#fff" stroke="#ED7100" stroke-width="1.5"/>
+  <text x="575" y="279" text-anchor="middle" font-size="12" font-weight="600">critique</text>
+  <text x="575" y="295" text-anchor="middle" font-size="10" fill="#666">score &lt; 8 → revise ↺</text>
+
+  <!-- wait box -->
+  <rect x="240" y="350" width="320" height="56" rx="6" fill="#eef6ff" stroke="#0972d3" stroke-width="2" stroke-dasharray="6 3"/>
+  <text x="400" y="373" text-anchor="middle" font-size="13" font-weight="700" fill="#0972d3">⏸ wait_for_callback("human-approval")</text>
+  <text x="400" y="392" text-anchor="middle" font-size="11" fill="#0972d3">suspended — $0 compute — up to 24 h</text>
+
+  <!-- publish -->
+  <rect x="290" y="430" width="220" height="46" rx="6" fill="#fff" stroke="#ED7100" stroke-width="1.5"/>
+  <text x="400" y="449" text-anchor="middle" font-size="12" font-weight="600">publish</text>
+  <text x="400" y="465" text-anchor="middle" font-size="10" fill="#666">step ✓ checkpoint</text>
+
+  <!-- Bedrock -->
+  <rect x="740" y="260" width="200" height="70" rx="8" fill="#fff" stroke="#01A88D" stroke-width="2"/>
+  <text x="840" y="285" text-anchor="middle" font-size="13" font-weight="600" fill="#232f3e">Amazon Bedrock</text>
+  <text x="840" y="303" text-anchor="middle" font-size="11" fill="#666">Claude Haiku 4.5</text>
+  <text x="840" y="319" text-anchor="middle" font-size="11" fill="#666">3 agent roles, 1 model</text>
+
+  <!-- S3 -->
+  <rect x="740" y="430" width="200" height="54" rx="8" fill="#fff" stroke="#7AA116" stroke-width="2"/>
+  <text x="840" y="453" text-anchor="middle" font-size="13" font-weight="600" fill="#232f3e">S3</text>
+  <text x="840" y="471" text-anchor="middle" font-size="11" fill="#666">approved post .md</text>
+
+  <!-- Arrows top row -->
+  <line x1="160" y1="107" x2="216" y2="107" stroke="#555" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <line x1="370" y1="107" x2="426" y2="107" stroke="#555" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <line x1="580" y1="107" x2="636" y2="107" stroke="#555" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+  <!-- API lambda -> orchestrator -->
+  <line x1="505" y1="134" x2="440" y2="206" stroke="#555" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <text x="530" y="175" font-size="11" fill="#555">async invoke (alias)</text>
+
+  <!-- step chain arrows -->
+  <line x1="280" y1="283" x2="326" y2="283" stroke="#555" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <line x1="460" y1="283" x2="506" y2="283" stroke="#555" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <line x1="575" y1="306" x2="405" y2="346" stroke="#555" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <line x1="400" y1="406" x2="400" y2="426" stroke="#555" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+  <!-- Bedrock arrows -->
+  <line x1="645" y1="283" x2="736" y2="290" stroke="#01A88D" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+  <!-- publish -> S3 -->
+  <line x1="510" y1="453" x2="736" y2="455" stroke="#555" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+  <!-- approve callback path -->
+  <path d="M 95 134 L 95 378 L 236 378" fill="none" stroke="#0972d3" stroke-width="2" marker-end="url(#arrow)"/>
+  <text x="40" y="260" font-size="11" fill="#0972d3">POST /{id}/approve</text>
+  <text x="40" y="276" font-size="11" fill="#0972d3">SendDurableExecution</text>
+  <text x="40" y="292" font-size="11" fill="#0972d3">CallbackSuccess</text>
+</svg>
