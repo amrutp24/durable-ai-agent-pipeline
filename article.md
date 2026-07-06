@@ -121,6 +121,6 @@ Swap "blog post" for anything that needs a human sign-off before something irrev
 
 ## Try it yourself
 
-The full Terraform + Lambda code is on GitHub: `durable-ai-agent-pipeline`. It deploys in a few minutes — `terraform apply` — and costs a few cents per run since the wait is free. Instructions and a troubleshooting table are in the README.
+The full Terraform + Lambda code is on GitHub: [amrutp24/durable-ai-agent-pipeline](https://github.com/amrutp24/durable-ai-agent-pipeline). It deploys in a few minutes — `terraform apply` — and costs a few cents per run since the wait is free. Instructions and a troubleshooting table are in the README. The infrastructure itself is packaged as a reusable Terraform module, [terraform-aws-durable-agent-pipeline](https://github.com/amrutp24/terraform-aws-durable-agent-pipeline), so you can drop the whole pipeline into your own stack with a single `module` block.
 
 If you're also trying to get hands-on with agentic AI on AWS, durable functions are a genuinely fun on-ramp: you get to write the *judgment* part of an agent (should I retry? should I wait? should I stop?) as plain, boring, readable code — no orchestration DSL required.
