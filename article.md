@@ -1,29 +1,35 @@
-# I Built an AI Agent Team That Sleeps for Free — Thanks to AWS's Newest Lambda Feature
+# Lambda functions can pause for free now. I built an AI agent pipeline to test that.
 
-Every serverless AI workflow I've built has hit the same wall: the moment a human needs to review something, you're stuck. Step Functions can wait, sure, but now you're paying for a state machine, wiring up a callback pattern, and hoping the payload fits. A "durable" Lambda felt like a contradiction — Lambda is famous for *not* being durable, for forgetting everything the second it's done.
+> Published on Medium: [Lambda functions can pause for free now](https://amruteng.medium.com/lambda-functions-can-pause-for-free-now-i-built-an-ai-agent-pipeline-to-test-that-66c2623fb7a7)
 
-Then AWS shipped **Lambda durable functions** at re:Invent 2025, and it's exactly what it sounds like: a Lambda function that can pause — for ten seconds or for ten months — without you paying a cent while it's paused, and pick up exactly where it left off. AWS's own launch content pointed straight at multi-agent AI workflows and human-in-the-loop approvals as the reason this exists. So I built one.
+TL;DR: Lambda "durable functions" can suspend mid-execution without billing. I built a three-agent content pipeline that pauses for human approval and resumes exactly where it left off, with no Step Functions involved.
+
+![Pipeline diagram](diagram.svg)
+
+Every serverless AI workflow I've built has the same problem. At some point a human needs to review something, and now you have to keep state alive while you wait. Step Functions can do it, but you're paying for the state machine, wiring up a callback pattern, and hoping your payload fits under the size limit. I've also done the Lambda + SQS + polling worker version. It works. It's ugly.
+
+At re:Invent 2025 AWS shipped Lambda durable functions. A durable function can stop in the middle of its code, wait (for ten seconds or ten months), and continue from that exact line later. You don't pay for the waiting time at all. AWS's launch material pointed at multi-agent AI workflows and human approvals as the main use case, so I built one to see if it holds up.
 
 ## What I built
 
-A three-agent content pipeline:
+A content pipeline with three agents:
 
-1. **Researcher agent** turns a topic into an outline
-2. **Writer agent** drafts a post from that outline
-3. **Editor agent** scores the draft 1–10 and, if it's not good enough, sends it back to the writer with feedback — a real revision loop, not a fixed pipeline
+1. A researcher that turns a topic into an outline
+2. A writer that drafts a post from the outline
+3. An editor that scores the draft 1 to 10. If the score is too low, the draft goes back to the writer with feedback and they loop.
 
-Once the editor is happy, the whole thing **suspends** and waits for a human to approve or reject the draft. That wait can last minutes, hours, or a full day, and during that time the function isn't running, isn't billed, and isn't costing anything. When someone calls the approve endpoint, Lambda wakes the function back up mid-execution and it finishes the job — publishing the final draft to S3.
+When the editor is satisfied, the function suspends and waits for a human to approve or reject the draft. Nothing runs and nothing is billed during the wait. When someone hits the approve endpoint, Lambda resumes the function mid-execution and it publishes the draft to S3.
 
-All three agents are just one cheap model — Claude Haiku 4.5 on Bedrock — called with different system prompts. The interesting part isn't the model; it's the orchestration.
+All three agents are the same model (Claude Haiku 4.5 on Bedrock) with different system prompts. The model isn't the interesting part here. The orchestration is.
 
-## The core idea: steps and waits
+## Steps and waits
 
-The durable execution SDK gives your handler a `DurableContext` instead of the usual Lambda context. Two operations matter here:
+The durable execution SDK hands your function a DurableContext instead of the normal Lambda context. Two methods do the work:
 
-- **`context.step(...)`** runs a chunk of business logic and checkpoints the result. If the function is interrupted later, it doesn't re-run — Lambda replays the stored result instead.
-- **`context.wait_for_callback(...)`** hands you a `callback_id`, suspends the function, and resumes it only when something outside the function calls back with that ID.
+- `context.step(...)` runs some logic and checkpoints the result. If the function gets interrupted later, completed steps don't re-run. Lambda replays their stored results.
+- `context.wait_for_callback(...)` gives you a callback ID, suspends the function, and resumes it when something outside calls back with that ID.
 
-Here's the shape of the orchestrator, trimmed down:
+Here's the orchestrator, trimmed down. The snippet omits imports and helper functions like `json`, `call_agent`, `set_status`, `publish_to_s3`, and `execution_id` — it shows the orchestration flow, not the full implementation (that's in [src/orchestrator/lambda_function.py](src/orchestrator/lambda_function.py)):
 
 ```python
 from aws_durable_execution_sdk_python import DurableContext, durable_execution
@@ -51,8 +57,7 @@ def lambda_handler(event, context: DurableContext):
         # store callback_id + draft in DynamoDB so an API route can find it later
         set_status(execution_id, callback_id=callback_id, draft=draft, status="AWAITING_APPROVAL")
 
-    # The callback result is whatever raw string the external caller sent -
-    # no automatic JSON parsing, so we decode it ourselves.
+    # The callback result arrives as a raw string, decode it yourself
     approval_raw = context.wait_for_callback(
         request_approval,
         name="human-approval",
@@ -67,25 +72,29 @@ def lambda_handler(event, context: DurableContext):
     return {"status": "PUBLISHED", "url": final_url}
 ```
 
-Two things surprised me while building this:
+Notice the revision loop is a normal for loop. No state machine JSON, no Choice states. The editor's decision is a Python if statement, and branching on it is safe because the score came out of a checkpointed step. On replay the stored value is reused instead of calling Bedrock again.
 
-**The revision loop is just... a for loop.** No state machine JSON, no extra Lambda per revision, no Step Functions "Choice" state. The editor's decision (`score >= threshold`) is a plain Python `if`, and because the score came from a checkpointed step, it's safe to branch on it — replays don't recompute it, they reuse the stored value.
+The zero-cost wait is real. I left a run sitting at AWAITING_APPROVAL overnight and the bill for those hours was zero. No polling worker burning invocations, no state machine charging per transition.
 
-**The wait genuinely costs nothing.** I left a test run sitting at `AWAITING_APPROVAL` overnight. No Lambda duration billed, no polling Lambda spinning in a loop burning invocations, no Step Functions per-transition cost. It's just... gone until someone calls back.
+## Things that bit me
 
-**The callback permission has a gotcha.** My first approval attempt failed with `AccessDeniedException` even though I'd granted `lambda:SendDurableExecutionCallbackSuccess` on the function's ARN. The callback resource is actually a *sub-resource of the versioned function ARN* — `...function:my-fn:2/durable-execution/<execution-id>/<callback-id>` — so the bare function ARN never matches. The IAM resource needs a trailing wildcard: `"${function_arn}:*"`.
+A few problems I hit that you'll probably hit too.
 
-**The published docs and the installed SDK didn't quite agree.** This feature is a few months old, and the SDK is still on major version 1 — AWS explicitly warns you to pin it for exactly this reason. The doc examples show a one-argument `callback_id` submitter and a plain `timeout=86400`; the version I actually `pip install`-ed wants a two-argument submitter and a `Duration.from_seconds(86400)` wrapped in a `WaitForCallbackConfig`. Nothing broke silently — Python just told me the import didn't exist — but it's a good reminder to `pip show` and read the installed source instead of trusting docs verbatim on anything this new.
+**The callback IAM permission.** My first approval attempt failed with AccessDeniedException even though I had granted lambda:SendDurableExecutionCallbackSuccess on the function's ARN. Turns out the callback resource is a sub-resource of the versioned function ARN, something like `function:my-fn:2/durable-execution/<execution-id>/<callback-id>`, so a policy on the bare function ARN never matches. You need a trailing wildcard: `"${function_arn}:*"`. This one cost me an hour.
 
-## Getting a human into the loop
+**The docs and the installed SDK disagree.** The doc examples show a one-argument submitter function and `timeout=86400`. The SDK version pip actually installs wants a two-argument submitter and a WaitForCallbackConfig with a Duration object. The feature is a few months old and AWS tells you to pin the SDK version, and they're right. When something this new misbehaves, read the installed source, not the docs.
 
-The approval side lives behind a small API Gateway HTTP API, handled by a plain (non-durable) Lambda:
+**LLMs wrap JSON in markdown fences.** My first live run died at the critique step because the editor returned its JSON inside a fenced code block even though the prompt said not to. Five lines of fence stripping before json.loads fixed it. One nice side effect of the versioning model: in-flight executions stay pinned to the code version that started them, so deploying the fix didn't disturb anything already running.
 
-- `POST /posts` — kicks off a run, returns an `execution_id`
-- `GET /posts/{id}` — check status and read the current draft
-- `POST /posts/{id}/approve` — approve or reject
+## Getting the human in
 
-The approve route does the one piece of glue that makes the callback pattern work — it looks up the `callback_id` DynamoDB stashed away when the orchestrator paused, then tells Lambda the callback succeeded:
+The approval side is a small HTTP API in front of a regular, non-durable Lambda:
+
+- POST /posts starts a run and returns an execution_id
+- GET /posts/{id} shows the status and the current draft
+- POST /posts/{id}/approve approves or rejects
+
+The approve route is the glue. It looks up the callback_id that the orchestrator stashed in DynamoDB before suspending, then tells Lambda the callback succeeded:
 
 ```python
 lambda_client.send_durable_execution_callback_success(
@@ -94,7 +103,7 @@ lambda_client.send_durable_execution_callback_success(
 )
 ```
 
-That single call is what wakes the orchestrator back up, replays its checkpoint log, and lets it fall through into the publish step.
+That one call wakes the orchestrator, it replays its checkpoint log, and execution continues into the publish step.
 
 ## Running it end to end
 
@@ -111,18 +120,20 @@ curl "$API/posts/a1b2..."
 # {"status": "PUBLISHED", "final_url": "s3://.../a1b2....md"}
 ```
 
-Watching it in the Lambda console's **Durable executions** tab is honestly the best part — you see every checkpoint, the exact moment it suspends, and the replay when it wakes back up.
+The Durable executions tab in the Lambda console shows every operation with timestamps. You can see each step, the WaitForCallback where it suspended, and the resume after the approval. The durable configuration on the function is two values: how long the whole execution is allowed to live, and how long Lambda keeps the checkpoint history after it finishes. That's separate from the normal Lambda timeout, which still applies to each individual invocation.
 
-One more field note: my first live run died at the critique step because the editor agent wrapped its JSON in markdown code fences — despite being told not to. The fix is a five-line fence-stripping helper before `json.loads`, and because I only changed code *after* the failed step, redeploying and re-running was painless. (In-flight executions stay pinned to the version that started them, which is exactly what you want here.)
+## What it cost
 
-## Where this actually matters
+Building all of this, including the failed runs, several end-to-end tests, an overnight suspension, and a test suite that deploys and tears down a full copy of the stack, came to $0.21. Almost all of it was Bedrock inference — each run makes 5 to 7 Haiku calls. The waiting, which is where these workflows spend most of their wall-clock time, costs nothing.
 
-Swap "blog post" for anything that needs a human sign-off before something irreversible happens — a refund, a support macro, a deploy, a contract clause — and the pattern holds. That's the pitch AWS is making with this feature, and having now built it, I believe it: the alternative (Step Functions + a callback token, or a Lambda + SQS + a polling worker) is more moving parts for the same guarantee.
+## Where this pattern applies
+
+Replace "blog post" with anything that needs sign-off before something irreversible happens: a refund, a deploy, a customer email, a contract change. The shape is identical. Having built it, I think the pitch holds. The alternatives do the same job with more moving parts.
 
 ## Try it yourself
 
-The full Terraform + Lambda code is on GitHub: [amrutp24/durable-ai-agent-pipeline](https://github.com/amrutp24/durable-ai-agent-pipeline). It deploys in a few minutes — `terraform apply` — and costs a few cents per run since the wait is free. Instructions and a troubleshooting table are in the README.
+The full Terraform + Lambda code is on GitHub: [amrutp24/durable-ai-agent-pipeline](https://github.com/amrutp24/durable-ai-agent-pipeline). It deploys with `terraform apply` and costs a few cents per run since the wait is free. Instructions and a troubleshooting table are in the README.
 
-The infrastructure is also published as a reusable Terraform module — [`amrutp24/durable-agent-pipeline/aws`](https://registry.terraform.io/modules/amrutp24/durable-agent-pipeline/aws) on the registry — and since durable functions are new enough that no module conventions exist for them yet, I wrote down the ones I had to learn the hard way. The repo ships a [DESIGN.md](https://github.com/amrutp24/terraform-aws-durable-agent-pipeline/blob/main/DESIGN.md) with seven rules for building on durable functions (qualified-ARN invocation, the versioned-ARN callback grant, SDK pinning for replay safety, dual timeout budgets…), a [published security posture](https://github.com/amrutp24/terraform-aws-durable-agent-pipeline/blob/main/SECURITY_POSTURE.md) where every scanner exception carries its reasoning, and — the part I'm proudest of — a behavioral test suite that deploys the module and proves the actual lifecycle: start, checkpoint, suspend, external callback, resume, result. Not "resources created successfully." The behavior.
+I also extracted the infrastructure into a reusable Terraform module, published on the registry as [amrutp24/durable-agent-pipeline/aws](https://registry.terraform.io/modules/amrutp24/durable-agent-pipeline/aws). Since durable functions are new, there weren't existing module conventions to follow, so that repo includes a [DESIGN.md](https://github.com/amrutp24/terraform-aws-durable-agent-pipeline/blob/main/DESIGN.md) with the rules I ended up with (qualified ARN invocation, the callback grant above, SDK pinning, the two separate timeouts), a [security posture doc](https://github.com/amrutp24/terraform-aws-durable-agent-pipeline/blob/main/SECURITY_POSTURE.md) listing every scanner exception with its reason, and a test that deploys the module and drives a real execution through suspend, callback, and resume before tearing it all down.
 
-If you're also trying to get hands-on with agentic AI on AWS, durable functions are a genuinely fun on-ramp: you get to write the *judgment* part of an agent (should I retry? should I wait? should I stop?) as plain, boring, readable code — no orchestration DSL required.
+If you want to get hands-on with agents on AWS, this is a good place to start. The judgment part of an agent — the should-I-retry and should-I-wait decisions — ends up as ordinary Python instead of an orchestration DSL.
