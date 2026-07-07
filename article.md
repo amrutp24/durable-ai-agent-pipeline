@@ -29,7 +29,7 @@ The durable execution SDK hands your function a DurableContext instead of the no
 - `context.step(...)` runs some logic and checkpoints the result. If the function gets interrupted later, completed steps don't re-run. Lambda replays their stored results.
 - `context.wait_for_callback(...)` gives you a callback ID, suspends the function, and resumes it when something outside calls back with that ID.
 
-Here's the orchestrator, trimmed down. The snippet omits imports and helper functions like `json`, `call_agent`, `set_status`, `publish_to_s3`, and `execution_id` — it shows the orchestration flow, not the full implementation (that's in [src/orchestrator/lambda_function.py](src/orchestrator/lambda_function.py)):
+Here's the orchestrator, trimmed down. The snippet omits imports and helper functions like `json`, `call_agent`, `set_status`, `publish_to_s3`, and `execution_id`. It shows the orchestration flow, not the full implementation (that's in [src/orchestrator/lambda_function.py](src/orchestrator/lambda_function.py)):
 
 ```python
 from aws_durable_execution_sdk_python import DurableContext, durable_execution
