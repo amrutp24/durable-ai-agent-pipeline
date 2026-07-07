@@ -124,7 +124,7 @@ The Durable executions tab in the Lambda console shows every operation with time
 
 ## What it cost
 
-Building all of this, including the failed runs, several end-to-end tests, an overnight suspension, and a test suite that deploys and tears down a full copy of the stack, came to $0.21. Almost all of it was Bedrock inference — each run makes 5 to 7 Haiku calls. The waiting, which is where these workflows spend most of their wall-clock time, costs nothing.
+Building all of this, including the failed runs, several end-to-end tests, an overnight suspension, and a test suite that deploys and tears down a full copy of the stack, came to $0.21. Almost all of it was Bedrock inference. Each run makes 5 to 7 Haiku calls. The waiting, which is where these workflows spend most of their wall-clock time, costs nothing.
 
 ## Where this pattern applies
 
@@ -136,4 +136,4 @@ The full Terraform + Lambda code is on GitHub: [amrutp24/durable-ai-agent-pipeli
 
 I also extracted the infrastructure into a reusable Terraform module, published on the registry as [amrutp24/durable-agent-pipeline/aws](https://registry.terraform.io/modules/amrutp24/durable-agent-pipeline/aws). Since durable functions are new, there weren't existing module conventions to follow, so that repo includes a [DESIGN.md](https://github.com/amrutp24/terraform-aws-durable-agent-pipeline/blob/main/DESIGN.md) with the rules I ended up with (qualified ARN invocation, the callback grant above, SDK pinning, the two separate timeouts), a [security posture doc](https://github.com/amrutp24/terraform-aws-durable-agent-pipeline/blob/main/SECURITY_POSTURE.md) listing every scanner exception with its reason, and a test that deploys the module and drives a real execution through suspend, callback, and resume before tearing it all down.
 
-If you want to get hands-on with agents on AWS, this is a good place to start. The judgment part of an agent — the should-I-retry and should-I-wait decisions — ends up as ordinary Python instead of an orchestration DSL.
+If you want to get hands-on with agents on AWS, this is a good place to start. The judgment part of an agent, the should-I-retry and should-I-wait decisions, ends up as ordinary Python instead of an orchestration DSL.
