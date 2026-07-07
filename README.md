@@ -15,7 +15,7 @@ Lambda durable functions let a function suspend mid-execution — for seconds or
 
 ## Project structure
 
-All AWS resources live in the reusable Terraform module [terraform-aws-durable-agent-pipeline](https://github.com/amrutp24/terraform-aws-durable-agent-pipeline); this repo holds the application code, the root config that consumes the module, and the article.
+All AWS resources live in the reusable Terraform module [terraform-aws-durable-agent-pipeline](https://github.com/amrutp24/terraform-aws-durable-agent-pipeline); this repo holds the application code and the root config that consumes the module.
 
 ```
 durable-ai-agent-pipeline/
@@ -32,9 +32,8 @@ durable-ai-agent-pipeline/
 │   │   └── requirements.txt
 │   └── api/                # Plain Lambda behind API Gateway (start/status/approve)
 │       └── lambda_function.py
-├── scripts/
-│   └── build.sh            # Vendors the durable execution SDK for the orchestrator
-└── article.md              # The Medium post draft for this project
+└── scripts/
+    └── build.sh            # Vendors the durable execution SDK for the orchestrator
 ```
 
 ## How the pipeline works
