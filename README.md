@@ -1,39 +1,46 @@
-# Durable AI Agent Pipeline 🤖⏸️
+# Durable AI Agent Pipeline
 
-A multi-agent content pipeline (researcher → writer → editor, with a self-correcting revision loop) that pauses for **free** while it waits on human approval — built on **AWS Lambda durable functions**, the checkpoint/replay execution model AWS shipped at re:Invent 2025.
+A content pipeline with three Bedrock "agents" (researcher, writer, editor) that revise a draft in a loop, then pause until a person approves or rejects it. It runs on AWS Lambda durable functions, the checkpoint-and-replay execution model AWS released at re:Invent 2025. While the pipeline waits for approval it is suspended, and suspended functions aren't billed for compute.
 
-- ☁️ **AWS Lambda durable functions** — the orchestrator, checkpointed step-by-step
-- 🧠 **Amazon Bedrock** (Claude Haiku 4.5) — three agent roles, one model
-- 🗄️ **DynamoDB** — tracks pipeline status + the pending draft
-- 🪣 **S3** — where approved posts get published
-- 🌐 **API Gateway HTTP API** — start a run, check status, approve/reject
-- 🏗️ **Terraform** via the reusable [terraform-aws-durable-agent-pipeline](https://github.com/amrutp24/terraform-aws-durable-agent-pipeline) module (AWS provider ≥ 6.25.0, which added `durable_config` support)
+It uses:
 
-## Why this is interesting
+- Lambda durable functions for the orchestrator, checkpointed step by step
+- Amazon Bedrock, with Claude Haiku 4.5 for all three agent roles
+- DynamoDB for run status and the pending draft
+- S3 for approved posts
+- API Gateway (HTTP API) to start a run, check its status, and approve or reject it
+- Terraform, through the [terraform-aws-durable-agent-pipeline](https://registry.terraform.io/modules/amrutp24/durable-agent-pipeline/aws/latest) module (AWS provider 6.25.0 or later, which added `durable_config`)
 
-Lambda durable functions let a function suspend mid-execution — for seconds or for up to a year — **without paying for idle compute**, then resume exactly where it left off. That's a genuinely new primitive, and AWS's own launch content points at multi-agent AI workflows and human-in-the-loop approvals as the flagship use case. This project builds that exact pattern end to end: three LLM "agents" cooperating in a loop, then a durable wait for a human to say yes/no, at no cost while it waits.
+Write-ups:
+
+- [Lambda functions can pause for free now. I built an AI agent pipeline to test that.](https://amruteng.medium.com/lambda-functions-can-pause-for-free-now-i-built-an-ai-agent-pipeline-to-test-that-66c2623fb7a7)
+- [I blogged about an AWS docs gap. Eight days later, AWS closed it.](https://amruteng.medium.com/i-blogged-about-an-aws-docs-gap-eight-days-later-aws-closed-it-f335d81d8a7e), about the callback IAM permission that wasn't documented when this was built
+
+## Why durable functions
+
+A durable function can suspend partway through a run, for anything from seconds to a year, and resume where it stopped. Steps that already completed aren't run again. AWS's launch material uses multi-agent AI workflows and human approvals as the main example, and this project builds that case: agents working in a loop, then a wait for a person, with no compute billed during the wait.
 
 ## Project structure
 
-All AWS resources live in the reusable Terraform module [terraform-aws-durable-agent-pipeline](https://github.com/amrutp24/terraform-aws-durable-agent-pipeline); this repo holds the application code and the root config that consumes the module.
+All AWS resources are created by the Terraform module. This repo holds the application code and the root configuration that uses the module.
 
 ```
 durable-ai-agent-pipeline/
-├── terraform/              # Root config: consumes the module + billing alert
+├── terraform/              # root config: uses the module, plus a billing alert
 │   ├── main.tf             # module "agent_pipeline" { ... }
-│   ├── billing.tf          # AWS Budgets $50/month alert
+│   ├── billing.tf          # AWS Budgets monthly alert
 │   ├── provider.tf
-│   ├── variables.tf        # No defaults - ALL config comes from dev.tfvars
+│   ├── variables.tf        # no defaults; all config comes from dev.tfvars
 │   ├── outputs.tf
-│   └── dev.tfvars.example  # Copy to dev.tfvars (gitignored) and fill in
+│   └── dev.tfvars.example  # copy to dev.tfvars (gitignored) and fill in
 ├── src/
-│   ├── orchestrator/       # The durable function: research → write → edit → wait → publish
+│   ├── orchestrator/       # the durable function: research, write, edit, wait, publish
 │   │   ├── lambda_function.py
 │   │   └── requirements.txt
-│   └── api/                # Plain Lambda behind API Gateway (start/status/approve)
+│   └── api/                # plain Lambda behind API Gateway (start, status, approve)
 │       └── lambda_function.py
 └── scripts/
-    └── build.sh            # Vendors the durable execution SDK for the orchestrator
+    └── build.sh            # vendors the durable execution SDK for the orchestrator
 ```
 
 ## How the pipeline works
@@ -43,7 +50,7 @@ POST /posts {"topic": "..."}
       │
       ▼  API Lambda: record run in DynamoDB, async-invoke the prod alias
 ┌────────────────────────────────────────────────────────────────┐
-│ Durable orchestrator — every (step) is checkpointed            │
+│ Durable orchestrator. Every (step) is checkpointed.            │
 │                                                                │
 │   research (step)                                              │
 │       │                                                        │
@@ -55,9 +62,9 @@ POST /posts {"topic": "..."}
 │       │                                │                       │
 │       ├── score < 8 ──► revise (step) ─┘  (max 2 revisions)    │
 │       │                                                        │
-│       ▼  score ≥ 8 (or revision limit reached)                 │
+│       ▼  score ≥ 8, or revision limit reached                  │
 │   wait_for_callback("human-approval")                          │
-│   suspended — $0 compute — up to 24 h                          │
+│   suspended, no compute billed, up to 24 h                     │
 │       │                                                        │
 │       │ ◄─── human: POST /posts/{id}/approve                   │
 │       │              {"approved": true | false}                │
@@ -68,14 +75,16 @@ POST /posts {"topic": "..."}
 └────────────────────────────────────────────────────────────────┘
 ```
 
-Every arrow into a `(step)` is a checkpoint: if the function fails or gets interrupted after `write`, a retry resumes at `critique` instead of re-running (and re-billing) the writer agent.
+Each `(step)` is a checkpoint. If the function fails after `write`, a retry resumes at `critique` instead of running (and paying for) the writer again.
+
+After the last allowed revision, the draft goes to approval without another critique. The score threshold, revision limit and approval timeout come from `approval_score_threshold`, `max_revisions` and `callback_timeout_seconds`; the values above are the ones in `dev.tfvars.example`.
 
 ## Prerequisites
 
-- AWS account with **Bedrock model access** granted for `anthropic.claude-haiku-4-5-20251001-v1:0` in your target region (Bedrock console → Model access)
-- Terraform ≥ 1.5, AWS provider will be pulled at ≥ 6.25.0
-- Python 3.13 + pip (to build the orchestrator's deployment package)
-- AWS CLI configured with credentials that can create Lambda/DynamoDB/S3/API Gateway/IAM resources
+- An AWS account with Bedrock model access for Claude Haiku 4.5 in your region (Bedrock console, Model access). The example config uses the `us.anthropic.claude-haiku-4-5-20251001-v1:0` inference profile.
+- Terraform 1.5 or later. `terraform init` pulls AWS provider 6.25.0 or later.
+- Python 3.13 and pip, to build the orchestrator package
+- AWS CLI with credentials that can create Lambda, DynamoDB, S3, API Gateway and IAM resources
 
 ## Deploy
 
@@ -87,38 +96,27 @@ cd durable-ai-agent-pipeline
 
 # 2. Deploy
 cd terraform
-cp dev.tfvars.example dev.tfvars   # fill in profile/region/email - dev.tfvars is gitignored
+cp dev.tfvars.example dev.tfvars   # fill in profile, region and email; dev.tfvars is gitignored
 terraform init
 terraform apply -var-file="dev.tfvars"
 ```
 
-All configuration (AWS profile, region, model, agent tuning, budget email) lives in `dev.tfvars`, which is **gitignored** — nothing environment-specific or personal is committed. The root variables have no defaults, so Terraform will refuse to run without it.
-
-The module is consumed from a local sibling path by default; once it's on the Terraform Registry you can switch `terraform/main.tf` to:
-
-```hcl
-source  = "amrutp24/durable-agent-pipeline/aws"
-version = "~> 1.0"
-```
-
-## Cost controls
-
-- **Reserved concurrency** variables cap runaway Lambda invocations (disabled with `-1` on accounts whose total concurrency limit is ≤50, since AWS requires 50 unreserved).
-- Durable waits bill **nothing** while suspended; DynamoDB is pay-per-request; CloudWatch logs expire after 14 days.
-- `terraform/billing.tf` additionally sets up a personal account-level AWS Budgets alert for whoever deploys this (`monthly_budget_usd` / `billing_alert_email` in tfvars). It's deployer-side protection, unrelated to the pipeline — delete the file if you don't want it.
-
 Note the `api_endpoint` output when it finishes.
+
+All configuration (AWS profile, region, model, agent settings, budget email) lives in `dev.tfvars`, which is gitignored, so nothing environment-specific is committed. The root variables have no defaults, so Terraform won't run without it.
+
+`main.tf` pulls the module from the Terraform Registry. To work on the module locally, change `source` to a sibling checkout of [terraform-aws-durable-agent-pipeline](https://github.com/amrutp24/terraform-aws-durable-agent-pipeline); the line to use is in a comment in `main.tf`.
 
 ## Try it
 
 ```bash
 API=<api_endpoint from terraform output>
 
-# Kick off a run
+# Start a run
 curl -s -X POST "$API/posts" -d '{"topic": "why idle compute shouldn'\''t cost money"}' | tee /tmp/run.json
 ID=$(jq -r .execution_id /tmp/run.json)
 
-# Poll status - watch it go STARTED -> AWAITING_APPROVAL
+# Poll the status until it goes from STARTED to AWAITING_APPROVAL
 curl -s "$API/posts/$ID" | jq
 
 # Read the draft in that response, then approve or reject it
@@ -129,22 +127,28 @@ curl -s "$API/posts/$ID" | jq
 aws s3 cp "s3://$(cd ../terraform && terraform output -raw posts_bucket)/$ID.md" -
 ```
 
-You can also watch the run in the Lambda console under **Durable executions** — it shows every checkpoint, the wait, and the replay when it resumes.
+The Lambda console also shows each run under **Durable executions**, including every checkpoint, the wait, and the replay when it resumes.
+
+## Cost
+
+Each run makes 3 to 6 Bedrock calls to Haiku (3 if the first draft passes, 6 with two revisions) plus a few Lambda invocations, which comes to a few cents. Time spent waiting for approval isn't billed.
+
+Cost controls:
+
+- Reserved concurrency variables cap Lambda invocations. Set them to `-1` on accounts whose total concurrency limit is 50 or lower, because AWS requires 50 to stay unreserved.
+- DynamoDB is pay-per-request, and CloudWatch logs expire after 14 days.
+- `terraform/billing.tf` adds an account-level AWS Budgets alert for whoever deploys this (`monthly_budget_usd` and `billing_alert_email` in `dev.tfvars`). It protects the deployer's account and has nothing to do with the pipeline, so delete the file if you don't want it.
 
 ## Troubleshooting
 
 | Symptom | Likely cause |
 | --- | --- |
-| `AccessDeniedException` calling Bedrock | Model access for the model in `model_id` isn't granted in that region yet |
-| `terraform apply` fails on `durable_config` | AWS provider is pinned below 6.25.0 — run `terraform init -upgrade` |
-| `/posts/{id}/approve` returns 409 | Run isn't at `AWAITING_APPROVAL` yet — poll `/posts/{id}` until the editor loop finishes |
-| Approve request errors with `CallbackTimeoutException` | `callback_timeout_seconds` expired before you approved; re-run the pipeline |
-| Approve returns 500 with `AccessDeniedException` right after deploy | Callback ARNs are sub-resources of the versioned function ARN, so the IAM resource must be `"${function_arn}:*"` (already in `iam.tf`); fresh IAM changes can also take ~1 min to propagate |
-| Orchestrator import errors for `aws_durable_execution_sdk_python` | Re-run `scripts/build.sh` — it wasn't packaged, or `build/orchestrator` is stale |
-
-## Cost
-
-Bedrock Haiku calls (5-7 per run) and a handful of Lambda invocations — a few cents per run. The whole point of the durable wait is that the hours spent waiting for approval cost **nothing**.
+| `AccessDeniedException` calling Bedrock | Model access for the model in `model_id` isn't granted in that region yet. |
+| `terraform apply` fails on `durable_config` | The AWS provider is below 6.25.0. Run `terraform init -upgrade`. |
+| `/posts/{id}/approve` returns 409 | The run isn't at `AWAITING_APPROVAL` yet. Poll `/posts/{id}` until the editor loop finishes. |
+| Approving fails with `CallbackTimeoutException` | `callback_timeout_seconds` passed before you approved. Start a new run. |
+| Approve returns 500 with `AccessDeniedException` right after deploy | Callback ARNs are sub-resources of the versioned function ARN, so the IAM resource has to be `"${function_arn}:*"`. The module already sets this; new IAM policies can take about a minute to propagate. |
+| Orchestrator import errors for `aws_durable_execution_sdk_python` | The SDK wasn't packaged, or `build/orchestrator` is out of date. Re-run `scripts/build.sh`. |
 
 ## Cleanup
 
@@ -155,8 +159,4 @@ terraform destroy -var-file="dev.tfvars"
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
-
-## Author
-
-Amrut Pagidipally
+MIT. See [LICENSE](LICENSE).
