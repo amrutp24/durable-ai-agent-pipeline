@@ -89,8 +89,11 @@ def lambda_handler(event, context: DurableContext):
     # This is the "agentic" part: the editor decides whether the writer needs
     # to try again, and the loop can run 0-N times depending on that decision.
     for revision in range(MAX_REVISIONS):
+        # Loop values are bound as defaults so each lambda keeps this
+        # iteration's draft. step() runs the function before returning, so the
+        # late binding never actually bit, but ruff's B023 can't tell that.
         critique_raw = context.step(
-            lambda _: call_agent(
+            lambda _, draft=draft: call_agent(
                 "You are an editor agent. Score the draft from 1-10 for clarity "
                 "and correctness. Reply with ONLY compact JSON: "
                 '{"score": <int>, "feedback": "<string>"}',
@@ -104,10 +107,10 @@ def lambda_handler(event, context: DurableContext):
             break
 
         draft = context.step(
-            lambda _: call_agent(
+            lambda _, draft=draft, feedback=critique["feedback"]: call_agent(
                 "You are a writer agent. Revise the draft in markdown using the "
                 "editor's feedback.",
-                f"Topic: {topic}\nPrevious draft:\n{draft}\nEditor feedback:\n{critique['feedback']}",
+                f"Topic: {topic}\nPrevious draft:\n{draft}\nEditor feedback:\n{feedback}",
             ),
             name=f"write-{revision + 1}",
         )
